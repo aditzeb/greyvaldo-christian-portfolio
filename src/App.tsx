@@ -19,12 +19,26 @@ import { FinanceVault } from './components/FinanceVault';
 
 const LANG_STORAGE_KEY = 'greyvaldo_lang_pref';
 
+function isFinanceRoute(): boolean {
+  if (typeof window === 'undefined') return false;
+  const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+  const hash = window.location.hash.toLowerCase();
+  return (
+    path === '/finance' ||
+    path === '/vault' ||
+    hash === '#finance' ||
+    hash === '#vault'
+  );
+}
+
 export function App() {
   const [lang, setLang] = useState<Language>(() => {
     const saved = localStorage.getItem(LANG_STORAGE_KEY);
     return saved === 'id' ? 'id' : 'en';
   });
-  const [activeView, setActiveView] = useState<'portfolio' | 'vault'>('portfolio');
+  const [activeView, setActiveView] = useState<'portfolio' | 'vault'>(() =>
+    isFinanceRoute() ? 'vault' : 'portfolio'
+  );
   const [isDossierOpen, setIsDossierOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [scrollProgress, setScrollProgress] = useState(0);
@@ -43,19 +57,28 @@ export function App() {
   }, [lang]);
 
   useEffect(() => {
-    const handleHashChange = () => {
-      if (window.location.hash === '#vault') {
-        setActiveView('vault');
-      }
+    const syncRoute = () => {
+      setActiveView(isFinanceRoute() ? 'vault' : 'portfolio');
     };
-    handleHashChange();
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
+    syncRoute();
+    window.addEventListener('popstate', syncRoute);
+    window.addEventListener('hashchange', syncRoute);
+    return () => {
+      window.removeEventListener('popstate', syncRoute);
+      window.removeEventListener('hashchange', syncRoute);
+    };
   }, []);
+
+  const handleExitVaultToPortfolio = () => {
+    window.history.pushState({}, '', '/');
+    setActiveView('portfolio');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   const navigateToSection = (id: string) => {
     setIsMobileMenuOpen(false);
     if (activeView !== 'portfolio') {
+      window.history.pushState({}, '', '/');
       setActiveView('portfolio');
       setTimeout(() => {
         document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
@@ -85,14 +108,13 @@ export function App() {
         />
       )}
 
-      {/* Surgical Top Navigation Bar */}
+      {/* Surgical Top Navigation Bar (No public Finance Vault button — accessible only via /finance) */}
       <header className="fixed top-0 left-0 right-0 z-40 h-14 bg-[#000000]/92 backdrop-blur-md border-b border-[#1F1F1F] px-3 sm:px-8 flex items-center justify-between gap-2">
         <button
           type="button"
           onClick={() => {
             setIsMobileMenuOpen(false);
-            setActiveView('portfolio');
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            handleExitVaultToPortfolio();
           }}
           className="flex items-center gap-2 text-left group min-w-0"
         >
@@ -103,23 +125,25 @@ export function App() {
           <span className="ink-label text-[#8F8F8F] hidden xl:inline">{t.navRole}</span>
         </button>
 
-        <nav className="hidden lg:flex items-center gap-6">
-          {[
-            { id: 'hero', label: t.navProfile },
-            { id: 'experience', label: t.navExperience },
-            { id: 'education', label: t.navEducation },
-            { id: 'skills', label: t.navSkills },
-          ].map((nav) => (
-            <button
-              key={nav.id}
-              type="button"
-              onClick={() => navigateToSection(nav.id)}
-              className="ink-label text-[#8F8F8F] hover:text-[#EDEDED] transition-colors"
-            >
-              {nav.label}
-            </button>
-          ))}
-        </nav>
+        {activeView === 'portfolio' && (
+          <nav className="hidden lg:flex items-center gap-6">
+            {[
+              { id: 'hero', label: t.navProfile },
+              { id: 'experience', label: t.navExperience },
+              { id: 'education', label: t.navEducation },
+              { id: 'skills', label: t.navSkills },
+            ].map((nav) => (
+              <button
+                key={nav.id}
+                type="button"
+                onClick={() => navigateToSection(nav.id)}
+                className="ink-label text-[#8F8F8F] hover:text-[#EDEDED] transition-colors"
+              >
+                {nav.label}
+              </button>
+            ))}
+          </nav>
+        )}
 
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* Bilingual EN / ID Toggle */}
@@ -148,36 +172,33 @@ export function App() {
             </button>
           </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              setIsMobileMenuOpen(false);
-              setActiveView((prev) => (prev === 'vault' ? 'portfolio' : 'vault'));
-            }}
-            className={`ink-btn-secondary py-1.5 px-2.5 sm:px-3 text-[11px] sm:text-xs ${
-              activeView === 'vault'
-                ? 'border-[#0070F3] text-[#0070F3]'
-                : 'border-[#1F1F1F] text-[#EDEDED]'
-            }`}
-          >
-            {t.navVault}
-          </button>
+          {activeView === 'portfolio' && (
+            <>
+              <button
+                type="button"
+                onClick={() => setIsDossierOpen(true)}
+                className="hidden sm:inline-flex ink-btn-secondary py-1.5 px-3 text-xs"
+              >
+                [CV / CONTACT]
+              </button>
 
-          {/* Mobile Menu Toggle Button (< lg) */}
-          <button
-            type="button"
-            onClick={() => setIsMobileMenuOpen((prev) => !prev)}
-            aria-label="Toggle navigation menu"
-            className="lg:hidden bg-[#0A0A0A] border border-[#1F1F1F] hover:border-[#0070F3] rounded-[8px] px-2.5 py-1.5 font-mono text-[11px] text-[#EDEDED]"
-          >
-            [{isMobileMenuOpen ? t.navClose : t.navMenu}]
-          </button>
+              {/* Mobile Menu Toggle Button (< lg) */}
+              <button
+                type="button"
+                onClick={() => setIsMobileMenuOpen((prev) => !prev)}
+                aria-label="Toggle navigation menu"
+                className="lg:hidden bg-[#0A0A0A] border border-[#1F1F1F] hover:border-[#0070F3] rounded-[8px] px-2.5 py-1.5 font-mono text-[11px] text-[#EDEDED]"
+              >
+                [{isMobileMenuOpen ? t.navClose : t.navMenu}]
+              </button>
+            </>
+          )}
         </div>
       </header>
 
       {/* Mobile Navigation Drawer (< lg) */}
       <AnimatePresence>
-        {isMobileMenuOpen && (
+        {isMobileMenuOpen && activeView === 'portfolio' && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -220,9 +241,9 @@ export function App() {
         )}
       </AnimatePresence>
 
-      {/* Conditional View: PIN-Protected Financial Vault vs. Public Engineering Portfolio */}
+      {/* Route View: /finance renders FinanceVault; / renders Public Engineering Portfolio */}
       {activeView === 'vault' ? (
-        <FinanceVault onBackToPortfolio={() => setActiveView('portfolio')} lang={lang} />
+        <FinanceVault onBackToPortfolio={handleExitVaultToPortfolio} lang={lang} />
       ) : (
         <main className="relative z-10 max-w-7xl mx-auto px-3.5 sm:px-10 pt-20 sm:pt-24 pb-24 space-y-20 sm:space-y-28">
           {/* ================================================================= */}
@@ -682,7 +703,7 @@ export function App() {
           </section>
 
           {/* ================================================================= */}
-          {/* FOOTER                                                            */}
+          {/* FOOTER (Clean Portfolio Footer — No Finance Vault Button)         */}
           {/* ================================================================= */}
           <footer className="pt-6 sm:pt-8 border-t border-[#1F1F1F]">
             <div className="ink-card flex flex-col md:flex-row items-start md:items-center justify-between gap-5 sm:gap-6">
@@ -704,16 +725,6 @@ export function App() {
                   className="ink-btn-primary text-center"
                 >
                   {t.footerDossierBtn}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveView('vault');
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
-                  className="ink-btn-secondary py-3 px-4 text-center"
-                >
-                  {t.footerVaultBtn}
                 </button>
               </div>
             </div>

@@ -67,7 +67,7 @@ A fixed, full-viewport Three.js scene evolves mathematically as the user scrolls
 
 ## 5. PIN-Protected Financial Vault & Cloud Firestore Ledger (`src/components/FinanceVault.tsx`)
 
-Accessible via the navbar `[FINANCE VAULT]` button and protected by an environment-configured PIN (`VITE_VAULT_PIN`).
+Hidden from the public portfolio screen and accessible exclusively via the direct route **`/finance`** ([https://greyvaldo-christian.web.app/finance](https://greyvaldo-christian.web.app/finance)), protected by an environment-configured PIN (`VITE_VAULT_PIN`).
 
 ### Separated Workspace Architecture
 1. **`01 // OVERVIEW & SPREADSHEET LEDGER`:**
@@ -158,3 +158,4 @@ firebase deploy --only firestore:rules,hosting:greyvaldo-christian
 ├── package.json                 # Dependencies and build scripts
 └── vite.config.ts               # Rollup modular chunk splitting configuration
 ```
+
