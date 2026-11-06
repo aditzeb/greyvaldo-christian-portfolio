@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "ananda-aditya"
+  },
+  "targets": {
+    "ananda-aditya": {
+      "hosting": {
+        "greyvaldo-christian": [
+          "greyvaldo-christian"
+        ]
+      }
+    }
+  }
+}
+

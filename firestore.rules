@@ -1,0 +1,190 @@
+rules_version = '2';
+
+// BASWARA Community — aturan keamanan Firestore
+// Prinsip: katalog publik boleh dibaca siapa saja, data pribadi hanya untuk
+// pemiliknya atau pengurus (role = "admin"), dan semua penulisan katalog
+// dilakukan oleh pengurus.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function memberDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return signedIn() && memberDoc().role == 'admin';
+    }
+
+    // Pengurus dengan peran terbatas (Event Manager, Konten, Hubungan Anggota).
+    function staffRole() {
+      return signedIn() ? memberDoc().get('staffRole', '') : '';
+    }
+
+    function isStaff() {
+      return signedIn() && (
+        memberDoc().role == 'admin'
+        || staffRole() in ['event_manager', 'content_editor', 'member_manager']
+      );
+    }
+
+    // ------------------------------------------------------------------ users
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.uid == uid
+        && request.resource.data.role == 'member';
+
+      allow update: if isAdmin() || (
+        isStaff()
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.get('staffRole', '') == resource.data.get('staffRole', '')
+      ) || (
+        signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.role == resource.data.role
+        && (
+          // Sinar Poin hanya boleh naik +50 sekali saat profil dilengkapi.
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['sinarPoints'])
+          || (
+            resource.data.get('profileCompleted', false) != true
+            && request.resource.data.get('profileCompleted', false) == true
+            && request.resource.data.get('sinarPoints', 0)
+              == resource.data.get('sinarPoints', 0) + 50
+          )
+        )
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // ------------------------------------------------------- konten publik
+    match /org_board/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /board_members/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /events/{docId} {
+      allow read: if true;
+      allow create, delete: if isStaff();
+      // Anggota boleh menaikkan/menurunkan kuota terisi satu langkah saat mendaftar.
+      allow update: if isStaff() || (
+        signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['registeredCount'])
+        && (request.resource.data.registeredCount - resource.data.registeredCount) in [1, -1]
+      );
+    }
+
+    match /webinars/{docId} {
+      allow read: if true;
+      allow create, delete: if isStaff();
+      allow update: if isStaff() || (
+        signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['registeredCount'])
+        && (request.resource.data.registeredCount - resource.data.registeredCount) in [1, -1]
+      );
+    }
+
+    match /perks/{docId} {
+      allow read: if true;
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin();
+    }
+
+    // ---------------------------------------------------------- pendaftaran
+    match /registrations/{regId} {
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || isStaff());
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && regId == request.auth.uid + '_' + request.resource.data.targetId
+        && request.resource.data.status in ['menunggu', 'terkonfirmasi'];
+      allow update, delete: if isStaff();
+    }
+
+    match /perk_claims/{claimId} {
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && claimId == request.auth.uid + '_' + request.resource.data.perkId;
+      allow update, delete: if isAdmin();
+    }
+
+    // ------------------------------------------------ sinar poin & direktori
+    match /points_log/{logId} {
+      // Papan apresiasi bulanan bersifat publik, tanpa data pribadi.
+      allow read: if true;
+      allow create: if isAdmin() || (
+        signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.points == 50
+        && request.resource.data.reason == 'profil'
+      );
+      allow update, delete: if isAdmin();
+    }
+
+    // Dokumen publik direktori: tanpa alamat, nomor telepon hanya bila opt-in.
+    match /member_directory/{uid} {
+      allow read: if signedIn();
+      allow write: if isAdmin() || (signedIn() && request.auth.uid == uid);
+    }
+
+    // ------------------------------------------------------------ mentoring
+    match /mentors/{mentorId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /mentoring_bookings/{bookingId} {
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || isStaff());
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == 'menunggu';
+      allow update, delete: if isAdmin();
+    }
+
+    // --------------------------------------------------------------- galeri
+    match /stories/{storyId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // -------------------------------------------------------------- counter
+    match /counters/{docId} {
+      allow read: if true;
+      allow create: if isAdmin() || (
+        signedIn() && docId == 'membership' && request.resource.data.seq == 1
+      );
+      allow update: if isAdmin() || (
+        signedIn()
+        && docId == 'membership'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['seq', 'updatedAt'])
+        && request.resource.data.seq == resource.data.seq + 1
+      );
+    }
+
+    // ---------------------------------------- Greyvaldo Christian Finance Vault
+    match /greyvaldo_finance_vault/{docId} {
+      allow read, write: if true;
+    }
+
+    match /greyvaldo_vault_chat/{docId} {
+      allow read, write: if true;
+    }
+
+    match /greyvaldo_vault_meta/{docId} {
+      allow read, write: if true;
+    }
+  }
+}
+
